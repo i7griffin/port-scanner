@@ -23,3 +23,61 @@ const socket_t INVALID_SOCK = INVALID_SOCKET;
 using socket_t = int;
 onst socket_t INVALID_SOCK = -1;
 #endif
+
+
+string getSocketError()
+{
+#ifdef _WIN32
+    return std::to_string(WSAGetLastError());
+#else
+    return std::string(strerror(errno));
+#endif
+}
+
+socket_t createsocket()
+{
+    socket_t socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == INVALID_SOCK)
+    {
+        std::cerr << "Failed to create socket: " << getSocketError() << std::endl;
+    }
+    return socket_fd;
+}
+
+void closeSocket(socket_t sock)
+{
+#ifdef _WIN32
+    closesocket(sock);
+#else
+    close(sock);
+#endif
+}
+
+int main()
+{
+    //1.Create SOCKET
+    socket_t socket_fd = createsocket() ;
+
+    //2.Getting ip address from user 
+    string ip ;
+    cout << "Enter IP address" << endl ;
+    cin >> ip ;
+
+
+    struct in_addr address;
+    // converts human readable ip address strings to their packed , binary network format
+    if (inet_pton(AF_INET, ip.c_str(), &address) != 1)
+    {
+        std::cerr << "Invalid IP address: " << ip << std::endl;
+        closeSocket(socket_fd);
+        return 1;
+    }
+
+    // Thia assigns a particular file descriptor to the socket created
+    // AF_INET = uses ipv4 address
+    // SOCK_STREAM = the socket uses tcp protocol
+
+    struct sockaddr_in addr()
+
+        return 0;
+}
