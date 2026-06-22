@@ -15,6 +15,8 @@ using socket_t = SOCKET;
 const socket_t INVALID_SOCK = INVALID_SOCKET;
 #else
 // Linux and macOS headers
+#include <cerrno>
+#include <string>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -23,6 +25,24 @@ const socket_t INVALID_SOCK = INVALID_SOCKET;
 using socket_t = int;
 const socket_t INVALID_SOCK = -1;
 #endif
+
+bool initSockets()
+{
+#ifdef _WIN32
+    WSADATA wsaData;
+    return WSAStartup(MAKEWORD(2, 2), &wsaData) == 0;
+    // MAKEWORD(2, 2) is the version of Winsock you're requesting — version 2.2
+#else
+    return true;
+#endif
+}
+
+void cleanupSockets()
+{
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
 
 string getSocketError()
 {
@@ -53,7 +73,15 @@ void closeSocket(socket_t sock)
 }
 
 int main()
-{
+{ /*I am wrapping the WSA startup inside the initsocket function adn ifndef WIN32 because the linux operating system
+     never heard of these words wsa startup or need to announce to use network layer
+     */
+    if (!initSockets())
+    {
+        cerr << "Failed to initialize sockets" << endl;
+        return 1;
+    }
+
     // 1.Create SOCKET
     socket_t socket_fd = createsocket();
 
@@ -100,4 +128,6 @@ int main()
         // connection failed — port is closed or filtered
         cout << "Port " << port << " is CLOSED — " << getSocketError() << endl;
     }
+    closeSocket(socket_fd);
+    return 0;
 }
