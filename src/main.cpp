@@ -21,9 +21,8 @@ const socket_t INVALID_SOCK = INVALID_SOCKET;
 #include <arpa/inet.h>
 #include <unistd.h>
 using socket_t = int;
-onst socket_t INVALID_SOCK = -1;
+const socket_t INVALID_SOCK = -1;
 #endif
-
 
 string getSocketError()
 {
@@ -55,29 +54,50 @@ void closeSocket(socket_t sock)
 
 int main()
 {
-    //1.Create SOCKET
-    socket_t socket_fd = createsocket() ;
+    // 1.Create SOCKET
+    socket_t socket_fd = createsocket();
 
-    //2.Getting ip address from user 
-    string ip ;
-    cout << "Enter IP address" << endl ;
-    cin >> ip ;
+    // 2.Getting ip address from user
+    string ip;
+    cout << "Enter IP address" << endl;
+    cin >> ip;
 
+    // 3.Getting the port from the user
+    int port;
+    cout << "Enter port number: " << endl;
+    cin >> port;
 
-    struct in_addr address;
-    // converts human readable ip address strings to their packed , binary network format
-    if (inet_pton(AF_INET, ip.c_str(), &address) != 1)
+    // 4.now we are wrapping the ip address into a whole socket
+    struct sockaddr_in addr;
+    // memset stores the gives places with zeroes here can also do = {}
+    memset(&addr, 0, sizeof(addr));
+
+    // 5.Filling the values of the struct
+    addr.sin_family = AF_INET;
+    // htons help to convert the port number in the order the computer expects
+    addr.sin_port = htons(port);
+    // 6. converts human readable ip address strings to their packed , binary network format and wirtes it in the address field of the structure
+    if (inet_pton(AF_INET, ip.c_str(), &addr.sin_addr) != 1)
     {
         std::cerr << "Invalid IP address: " << ip << std::endl;
         closeSocket(socket_fd);
         return 1;
     }
 
-    // Thia assigns a particular file descriptor to the socket created
-    // AF_INET = uses ipv4 address
-    // SOCK_STREAM = the socket uses tcp protocol
+    // 7.the next step is tho request connection to the remote server throught he particular socket . This is donw through the connect function
+    int result = connect(socket_fd, (struct sockaddr *)&addr, sizeof(addr));
+    // the parameters are the file descriptor , and the socket to proceed with request and details of how big the address struct is . It results in three kinds of output dependind on the nature if the response
+    // 0 == if the server accepts and the TCP handshake is successfully completed
+    //  -1 == if "connection refused" error, or nothing comes back at all (filtered port, host unreachable) and it eventually times out [RST PACKET]
 
-    struct sockaddr_in addr()
-
-        return 0;
+    if (result == 0)
+    {
+        // handshake completed — something is actively listening on that port
+        cout << "Port " << port << " is OPEN" << endl;
+    }
+    else
+    {
+        // connection failed — port is closed or filtered
+        cout << "Port " << port << " is CLOSED — " << getSocketError() << endl;
+    }
 }
