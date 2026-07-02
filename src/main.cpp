@@ -1,4 +1,9 @@
 // A program which scans a particular ip address and determines whether the ports are open or closed
+// To run the file either create a makefile instructing to use winsock library (-lws2_32 is a flag telling the compiler to link your code against the W
+//indows Winsock library — the library containing all the socket functions like socket(), connect(), WSAStartup())
+
+
+//HERE MAKEFILE NOT NEEDED BECAUSE THESE FUNCTIONS ARE BUILT IN THE OS ITSELF FOR LINUX 
 #include <iostream>
 #include <string>
 using namespace std;
