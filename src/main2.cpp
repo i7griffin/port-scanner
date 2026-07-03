@@ -25,7 +25,7 @@ const socket_t INVALID_SOCK = INVALID_SOCKET;
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <fcntl.h>   // For non-blocking socket setup on Linux
+#include <fcntl.h> // For non-blocking socket setup on Linux
 
 using socket_t = int;
 const socket_t INVALID_SOCK = -1;
@@ -80,9 +80,16 @@ void closeSocket(socket_t sock)
 
 void setNonBlocking(socket_t sock)
 {
-    // TODO: Set socket to non-blocking mode
-    // Windows: use ioctlsocket(sock, FIONBIO, &mode) where mode = 1
-    // Linux: use fcntl(sock, F_SETFL, flags | O_NONBLOCK)
+#ifdef _WIN32
+    unsigned long mode = 1;
+    ioctlsocket(sock, FIONBIO, &mode);
+#else
+int flags = fcntl(sock, F_GETFL,0);        // Gets the current file/socket flags.
+fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+#endif // Adds the O_NONBLOCK flag while keeping existing flags.
+// The socket now returns immediately instead of waiting for data.
+    // Windows uses ioctlsocket(sock, FIONBIO, &mode) where mode = 1 . 1 means enable non blobking and 0 means disable non blocking
+    // Linux uses fcntl(sock, F_SETFL, flags | O_NONBLOCK)
 }
 
 bool waitForConnection(socket_t sock, int timeoutSeconds)
@@ -90,12 +97,12 @@ bool waitForConnection(socket_t sock, int timeoutSeconds)
     // TODO: Use select() to wait for the connection to complete with a timeout
     // Returns true if socket is ready (check result with checkConnectionResult())
     // Returns false if timeout occurred
-    
+
     // Step 1: Create fd_set for write and error conditions
     // Step 2: Call select() with timeout
     // Step 3: Return true if result > 0, false if timeout/error
-    
-    return false;  // placeholder
+
+    return false; // placeholder
 }
 
 bool checkConnectionResult(socket_t sock)
@@ -103,8 +110,8 @@ bool checkConnectionResult(socket_t sock)
     // TODO: Call getsockopt(SO_ERROR) to check if connection succeeded
     // Returns true if error == 0 (port is OPEN)
     // Returns false if error != 0 (port is CLOSED)
-    
-    return false;  // placeholder
+
+    return false; // placeholder
 }
 
 // ===== END PHASE 2 FUNCTIONS =====
@@ -145,22 +152,27 @@ int main()
     // 5. Scan the port range
     for (int port = startPort; port <= endPort; port++)
     {
-        // TODO: Create socket
-        // TODO: Check if socket creation succeeded
-        
-        // TODO: Set socket to non-blocking mode
-        
-        // TODO: Update addr.sin_port for this port (use htons)
-        
+        socket_t sock = createsocket();
+        if (sock == INVALID_SOCK)
+        {
+            continue;
+            // since we are checking through a range of ports we will skip to the next port
+        }
+
+        setNonBlocking(sock) ;
+
+        // I will update addr.sin_port 
+        addr.sin_port = htons(port);
+
         // TODO: Call connect() (expect it to return -1 with EINPROGRESS on non-blocking)
-        
+
         // TODO: Call waitForConnection() with timeout (e.g., 2 seconds)
         // TODO: If waitForConnection() returns false (timeout), print "FILTERED" and continue
-        
+
         // TODO: If waitForConnection() returns true, call checkConnectionResult()
         // TODO: If checkConnectionResult() returns true, print "Port X is OPEN"
         // TODO: If checkConnectionResult() returns false, print "Port X is CLOSED"
-        
+
         // TODO: Close socket
     }
 
