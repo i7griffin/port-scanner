@@ -85,7 +85,7 @@ void setNonBlocking(socket_t sock)
     ioctlsocket(sock, FIONBIO, &mode);
 #else
     int flags = fcntl(sock, F_GETFL, 0); // Gets the current file/socket flags.
-    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 #endif // Adds the O_NONBLOCK flag while keeping existing flags.
     // The socket now returns immediately instead of waiting for data.
     // Windows uses ioctlsocket(sock, FIONBIO, &mode) where mode = 1 . 1 means enable non blobking and 0 means disable non blocking
@@ -122,14 +122,19 @@ bool waitForConnection(socket_t sock, int timeoutSeconds)
 
 bool checkConnectionResult(socket_t sock)
 {
-    // TODO: Call getsockopt(SO_ERROR) to check if connection succeeded
-    // Returns true if error == 0 (port is OPEN)
-    // Returns false if error != 0 (port is CLOSED)
+    int error = 0;
 
-    return false; // placeholder
+#ifdef _WIN32
+    int errorLen = sizeof(error);
+    getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&error, &errorLen);
+#else
+    socklen_t errorLen = sizeof(error);
+    getsockopt(sock, SOL_SOCKET, SO_ERROR, (void *)&error, &errorLen);
+#endif
+
+    return error == 0; // 0 means connection succeeded
+    // amd it returns any other if the connection is failed
 }
-
-// ===== END PHASE 2 FUNCTIONS =====
 
 int main()
 {
@@ -184,24 +189,22 @@ int main()
 
         if (waitForConnection(sock, 2))
         {
-            // TODO: Call checkConnectionResult() to see if it was open or closed
+            if (checkConnectionResult(sock))
+            {
+                cout << "Port " << port << " is OPEN" << endl;
+            }
+            else
+            {
+                cout << "Port " << port << " is CLOSED" << endl;
+            }
+            closesocket(sock);
         }
         else
         {
-            // Port is filtered 
+            // Port is filtered
             cout << "Port " << port << " is FILTERED" << endl;
-            closeSocket(sock);
-            continue;
         }
-
-        // TODO: Call waitForConnection() with timeout (e.g., 2 seconds)
-        // TODO: If waitForConnection() returns false (timeout), print "FILTERED" and continue
-
-        // TODO: If waitForConnection() returns true, call checkConnectionResult()
-        // TODO: If checkConnectionResult() returns true, print "Port X is OPEN"
-        // TODO: If checkConnectionResult() returns false, print "Port X is CLOSED"
-
-        // TODO: Close socket
+        closeSocket(sock);
     }
 
     cleanupSockets();
