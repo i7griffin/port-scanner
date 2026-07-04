@@ -84,25 +84,40 @@ void setNonBlocking(socket_t sock)
     unsigned long mode = 1;
     ioctlsocket(sock, FIONBIO, &mode);
 #else
-int flags = fcntl(sock, F_GETFL,0);        // Gets the current file/socket flags.
-fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    int flags = fcntl(sock, F_GETFL, 0); // Gets the current file/socket flags.
+    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 #endif // Adds the O_NONBLOCK flag while keeping existing flags.
-// The socket now returns immediately instead of waiting for data.
+    // The socket now returns immediately instead of waiting for data.
     // Windows uses ioctlsocket(sock, FIONBIO, &mode) where mode = 1 . 1 means enable non blobking and 0 means disable non blocking
     // Linux uses fcntl(sock, F_SETFL, flags | O_NONBLOCK)
 }
 
 bool waitForConnection(socket_t sock, int timeoutSeconds)
 {
-    // TODO: Use select() to wait for the connection to complete with a timeout
-    // Returns true if socket is ready (check result with checkConnectionResult())
-    // Returns false if timeout occurred
+    fd_set writeSet, errorSet;
+    FD_ZERO(&writeSet);
+    FD_ZERO(&errorSet);
+    /* These ae sets that contain file descriptors named according to our need.
+    we will generally at the start add the socket to both of the sets .*/
+    FD_SET(sock, &writeSet);
+    FD_SET(sock, &errorSet);
 
-    // Step 1: Create fd_set for write and error conditions
-    // Step 2: Call select() with timeout
-    // Step 3: Return true if result > 0, false if timeout/error
+    struct timeval timeout;
+    timeout.tv_sec = timeoutSeconds;
+    timeout.tv_usec = 0;
+    /* Creating a time structure to ask the select function to wait for a particular time.*/
 
-    return false; // placeholder
+    int result = select(sock + 1, nullptr, &writeSet, &errorSet, &timeout);
+    /* if it is in writeset 1 will be returned or else 0 */
+
+    if (result > 0)
+    {
+        return true; // Connection finished (success or failure)
+    }
+    else
+    {
+        return false; // Timeout
+    }
 }
 
 bool checkConnectionResult(socket_t sock)
@@ -159,12 +174,25 @@ int main()
             // since we are checking through a range of ports we will skip to the next port
         }
 
-        setNonBlocking(sock) ;
+        setNonBlocking(sock);
 
-        // I will update addr.sin_port 
+        // I will update addr.sin_port
         addr.sin_port = htons(port);
 
-        // TODO: Call connect() (expect it to return -1 with EINPROGRESS on non-blocking)
+        int result = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+        //(struct sockaddr *)&addr — pointer to the address struct (cast to generic sockaddr*)
+
+        if (waitForConnection(sock, 2))
+        {
+            // TODO: Call checkConnectionResult() to see if it was open or closed
+        }
+        else
+        {
+            // Port is filtered 
+            cout << "Port " << port << " is FILTERED" << endl;
+            closeSocket(sock);
+            continue;
+        }
 
         // TODO: Call waitForConnection() with timeout (e.g., 2 seconds)
         // TODO: If waitForConnection() returns false (timeout), print "FILTERED" and continue
