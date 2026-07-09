@@ -76,7 +76,6 @@ void closeSocket(socket_t sock)
 #endif
 }
 
-// ===== PHASE 2: NEW FUNCTIONS =====
 
 void setNonBlocking(socket_t sock)
 {
