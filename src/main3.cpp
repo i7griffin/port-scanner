@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+// a class that represents a lock (mutual exclusion).
 #include <queue>
 #include <map>
 #include <vector>
@@ -128,7 +129,8 @@ bool checkConnectionResult(socket_t sock)
 
 std::string scanSinglePort(std::string ip, int port)
 {
-    // TODO: Scan a single port
+    // Scanning a single port
+    // Workflow
     // Create socket → set non-blocking → connect → waitForConnection → checkConnectionResult
     // Return "OPEN", "CLOSED", or "FILTERED"
 
@@ -174,24 +176,23 @@ std::string scanSinglePort(std::string ip, int port)
 
 void workerThread(std::string ip)
 {
-    // TODO: Worker thread function
-    // Loop:
-    //   - Lock queueMutex
-    //   - Check if portQueue is empty
-    //   - If empty, break
-    //   - Pop a port from portQueue
-    //   - Unlock queueMutex
-    //   - Scan the port using scanSinglePort()
-    //   - Lock resultsMutex
-    //   - Store result in results map
-    //   - Unlock resultsMutex
-    //   - Continue loop
 
     while (true)
     {
         int port;
         {
             std::lock_guard<std::mutex> lock(queueMutex);
+            /*std::lock_guard is a C++ template class that automatically manages mutex
+             locking and unlocking using the RAII (Resource Acquisition Is Initialization) idiom
+             It locks a mutex upon construction and safely unlocks it when the lock_guard goes out of scope,
+              preventing deadlocks even if exceptions occur.*/
+
+            /*this helps to prevent racing condition . allows access to only one thread to crucial data*/
+
+            /*
+A mutex is just a lock. It doesn't contain any values.
+lock() — Acquires the lock (closes the door)
+unlock() — Releases the lock (opens the door)*/
             if (portQueue.empty())
             {
                 break;
@@ -199,7 +200,6 @@ void workerThread(std::string ip)
             port = portQueue.front();
             portQueue.pop();
         }
-
         std::string status = scanSinglePort(ip, port);
 
         {
@@ -248,19 +248,19 @@ int main()
     for (int i = 0; i < NUM_THREADS; i++)
     {
         threads.push_back(std::thread(workerThread, ip));
-        //this thread object has no name. It's an anonymous object (a temporary object).
-        //this saves a lot of space 
-        //this is the syntax for calling a constructor with functions and parameters without any name 
+        // this thread object has no name. It's an anonymous object (a temporary object).
+        // this saves a lot of space
+        // this is the syntax for calling a constructor with functions and parameters without any name
     }
 
-    // TODO: Wait for all threads to finish
+    //// Main thread reaches here while worker threads are already scanning
     for (auto &thread : threads)
     {
         thread.join();
     }
 
     // TODO: Print results
-    cout << "\n=== Scan Results ===" << endl;
+    cout << "\nScan Results" << endl;
     for (auto &[port, status] : results)
     {
         cout << "Port " << port << " is " << status << endl;
