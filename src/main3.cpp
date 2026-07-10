@@ -201,6 +201,7 @@ unlock() — Releases the lock (opens the door)*/
             portQueue.pop();
         }
         std::string status = scanSinglePort(ip, port);
+        cout << "Port " << port << " is " << status << endl;
 
         {
             std::lock_guard<std::mutex> lock(resultsMutex);
