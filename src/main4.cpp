@@ -1,6 +1,6 @@
 // This is a upgraded port scanner with banner grabbing possible
 // improved upon the phase 3 port scanner with banner grabbing
-
+// it is accompanies with json hardcoded port mapping 
 #include <iostream>
 #include <string>
 #include <thread>
