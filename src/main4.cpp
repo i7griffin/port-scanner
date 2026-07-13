@@ -152,16 +152,11 @@ std::string getProbeForPort(int port)
 
 std::string grabBanner(socket_t sock, int port)
 {
-    // TODO: Attempt to read banner from the socket
-    // Step 1: Get probe for this port using getProbeForPort()
-    // Step 2: If probe is not empty, send it with send()
-    // Step 3: Wait for response using waitForConnection() with select() (1-2 sec timeout)
-    // Step 4: If select() returns true, recv() the banner data (up to 1024 bytes)
-    // Step 5: Return the banner string (or empty string if timeout/error)
+    
 
     std::string probe = getProbeForPort(port);
 
-    if (!probe.empty())
+    if (!probe.empty()) // yeah if probe is required by the active service we need to send it 
     {
         //if probe is required to get banner then send port 
         int sent = send(sock, probe.c_str(), probe.length(), 0);
@@ -173,19 +168,23 @@ std::string grabBanner(socket_t sock, int port)
         }
     }
 
-    //now we need to wait for connection 
-    if (waitForConnection(sock, 2))
+    //for passive services with no probes required it jumps straight to here without sending porbes (to waiting and reading )
+    if (waitForConnection(sock, 2))//if the connection is suceeded , then it waits for data and copies the data at the socket 
     {
-        // TODO: Receive banner
         char buffer[1024];
-        // int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
-        // if (bytesRead > 0) {
-        //     buffer[bytesRead] = '\0';
-        //     return std::string(buffer);
-        // }
+        //1024 is used as it is well over the maximum amount that could come 
+        int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        //recv funtion reads the data that is currently available in the socket into buffer 
+        if (bytesRead > 0) {
+        buffer[bytesRead] = '\0';
+        return std::string(buffer);
+        /*The bytesread is ==0 when it is closed and no transfer is happened*/
+        /*the bytesread is -1 if the data transfer is failed or an error occured*/
+        }
     }
 
-    return ""; // No banner or timeout
+    return "";
+    //other than is the bytesread is > 0 it falls here and returns ""
 }
 
 std::string identifyService(int port, std::string banner)
@@ -244,7 +243,8 @@ std::string scanSinglePort(std::string ip, int port)
         {
             // if the control goes to this block then the port is open .Now we can proceed with banner grabbing
             std::string banner = grabBanner(sock, port);
-            std::string service = identifyService(port, banner);
+            //now the deatils about the banner and service is stored in the variable banner 
+            std::string service = identifyService(port, banner);//now we need to identify the service with the banner found 
 
             closeSocket(sock);
 
