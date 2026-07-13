@@ -1,6 +1,6 @@
 // This is a upgraded port scanner with banner grabbing possible
 // improved upon the phase 3 port scanner with banner grabbing
-// it is accompanies with json hardcoded port mapping 
+#include "services.h"
 #include <iostream>
 #include <string>
 #include <thread>
@@ -33,13 +33,20 @@ using socket_t = int;
 const socket_t INVALID_SOCK = -1;
 #endif
 
-
+// ===== SHARED DATA FOR THREADING =====
 std::queue<int> portQueue;
 std::map<int, std::string> results;
 std::mutex queueMutex;
 std::mutex resultsMutex;
 
+// ===== BANNER GRABBING DATA =====
+// TODO: Create a map or structure for port → service information
+// Example: std::map<int, std::string> portToService;
+// portToService[22] = "SSH|passive|";
+// portToService[80] = "HTTP|active|GET / HTTP/1.0\r\n\r\n";
+// Format: "ServiceName|passive/active|ProbeString"
 
+// ===== SOCKET FUNCTIONS (FROM PHASE 3) =====
 
 bool initSockets()
 {
@@ -126,46 +133,86 @@ bool checkConnectionResult(socket_t sock)
     return error == 0;
 }
 
-
+// ===== PHASE 4: NEW FUNCTIONS =====
 
 std::string getProbeForPort(int port)
 {
-    
+    auto it = serviceMap.find(port);
+    // searching for port in the service header file
+
+    if (it != serviceMap.end())
+    {
+        return it->second.probe;
+        // if the port is found then return the probe string
+        // structure of the servicemap(std::map<int, ServiceInfo> serviceMap)
+    }
+
     return "";
 }
 
 std::string grabBanner(socket_t sock, int port)
 {
-   
+    // TODO: Attempt to read banner from the socket
+    // Step 1: Get probe for this port using getProbeForPort()
+    // Step 2: If probe is not empty, send it with send()
+    // Step 3: Wait for response using waitForConnection() with select() (1-2 sec timeout)
+    // Step 4: If select() returns true, recv() the banner data (up to 1024 bytes)
+    // Step 5: Return the banner string (or empty string if timeout/error)
 
     std::string probe = getProbeForPort(port);
 
     if (!probe.empty())
     {
-        
+        //if probe is required to get banner then send port 
+        int sent = send(sock, probe.c_str(), probe.length(), 0);
+
+        // Check if send was successful
+        if (sent < 0)//positive number - bytes sent and -1 if the send is unsuccessful
+        {
+            return ""; //if it is failed , return empty 
+        }
     }
 
-    
+    //now we need to wait for connection 
     if (waitForConnection(sock, 2))
     {
-       
+        // TODO: Receive banner
         char buffer[1024];
-        
+        // int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        // if (bytesRead > 0) {
+        //     buffer[bytesRead] = '\0';
+        //     return std::string(buffer);
+        // }
     }
 
-    return ""; 
+    return ""; // No banner or timeout
 }
 
 std::string identifyService(int port, std::string banner)
 {
-    
+    // TODO: Parse the banner and return a service identification string
+    // Input: port number and banner string
+    // Output: Human-readable service name
+
+    // Examples:
+    // grabBanner returns "SSH-2.0-OpenSSH_7.4"
+    // identifyService(22, "SSH-2.0-OpenSSH_7.4") returns "SSH (OpenSSH 7.4)"
+
+    // grabBanner returns "HTTP/1.1 200 OK\r\nServer: Apache/2.4.41\r\n..."
+    // identifyService(80, "...") returns "HTTP (Apache 2.4.41)"
 
     if (banner.empty())
     {
         return "Unknown";
     }
 
-    
+    // TODO: Simple parsing logic
+    // If banner starts with "SSH", extract version
+    // If banner starts with "HTTP", extract server name
+    // If banner starts with "220", it's likely SMTP
+    // Etc.
+
+    // Placeholder:
     return "Unknown Service";
 }
 
@@ -195,13 +242,14 @@ std::string scanSinglePort(std::string ip, int port)
     {
         if (checkConnectionResult(sock))
         {
-            
+            // if the control goes to this block then the port is open .Now we can proceed with banner grabbing
             std::string banner = grabBanner(sock, port);
             std::string service = identifyService(port, banner);
 
             closeSocket(sock);
 
-           
+            // TODO: Return result with service identification
+            // Return format: "OPEN - ServiceName" or "OPEN - Unknown"
             return "OPEN - " + service;
         }
         else
