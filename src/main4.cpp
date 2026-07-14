@@ -33,20 +33,14 @@ using socket_t = int;
 const socket_t INVALID_SOCK = -1;
 #endif
 
-// ===== SHARED DATA FOR THREADING =====
+// this data declaring at the global level helps in threading
 std::queue<int> portQueue;
 std::map<int, std::string> results;
 std::mutex queueMutex;
 std::mutex resultsMutex;
 
-// ===== BANNER GRABBING DATA =====
-// TODO: Create a map or structure for port → service information
-// Example: std::map<int, std::string> portToService;
-// portToService[22] = "SSH|passive|";
-// portToService[80] = "HTTP|active|GET / HTTP/1.0\r\n\r\n";
-// Format: "ServiceName|passive/active|ProbeString"
-
-// ===== SOCKET FUNCTIONS (FROM PHASE 3) =====
+// FIX: added a dedicated mutex to stop threads interleaving cout output
+std::mutex printMutex;
 
 bool initSockets()
 {
@@ -120,6 +114,28 @@ bool waitForConnection(socket_t sock, int timeoutSeconds)
     return result > 0;
 }
 
+// FIX: new function — watches the READ set instead of the WRITE set.
+// waitForConnection() tells you when connect() has finished (socket becomes writable).
+// waitForData() tells you when there is actually banner data ready to recv() (socket becomes readable).
+// Using waitForConnection() inside grabBanner() was the root cause of the hang, because a freshly
+// connected socket is already writable almost instantly, regardless of whether the server has sent
+// anything yet.
+bool waitForData(socket_t sock, int timeoutSeconds)
+{
+    fd_set readSet, errorSet;
+    FD_ZERO(&readSet);
+    FD_ZERO(&errorSet);
+    FD_SET(sock, &readSet);
+    FD_SET(sock, &errorSet);
+
+    struct timeval timeout;
+    timeout.tv_sec = timeoutSeconds;
+    timeout.tv_usec = 0;
+
+    int result = select(sock + 1, &readSet, nullptr, &errorSet, &timeout);
+    return result > 0;
+}
+
 bool checkConnectionResult(socket_t sock)
 {
     int error = 0;
@@ -133,7 +149,7 @@ bool checkConnectionResult(socket_t sock)
     return error == 0;
 }
 
-// ===== PHASE 4: NEW FUNCTIONS =====
+// these are the new functiond over the 3rd level port scanner
 
 std::string getProbeForPort(int port)
 {
@@ -152,67 +168,147 @@ std::string getProbeForPort(int port)
 
 std::string grabBanner(socket_t sock, int port)
 {
-    
-
     std::string probe = getProbeForPort(port);
 
-    if (!probe.empty()) // yeah if probe is required by the active service we need to send it 
     {
-        //if probe is required to get banner then send port 
-        int sent = send(sock, probe.c_str(), probe.length(), 0);
-
-        // Check if send was successful
-        if (sent < 0)//positive number - bytes sent and -1 if the send is unsuccessful
+        // FIX: wrapped debug prints in printMutex so they don't interleave across threads
+        std::lock_guard<std::mutex> lock(printMutex);
+        cout << "Port " << port << " probe: ";
+        if (probe.empty())
         {
-            return ""; //if it is failed , return empty 
+            cout << "PASSIVE (no probe)" << endl;
+        }
+        else
+        {
+            cout << "ACTIVE (sending probe)" << endl;
         }
     }
 
-    //for passive services with no probes required it jumps straight to here without sending porbes (to waiting and reading )
-    if (waitForConnection(sock, 2))//if the connection is suceeded , then it waits for data and copies the data at the socket 
+    // Send probe if needed
+    if (!probe.empty())
     {
-        char buffer[1024];
-        //1024 is used as it is well over the maximum amount that could come 
-        int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
-        //recv funtion reads the data that is currently available in the socket into buffer 
-        if (bytesRead > 0) {
-        buffer[bytesRead] = '\0';
-        return std::string(buffer);
-        /*The bytesread is ==0 when it is closed and no transfer is happened*/
-        /*the bytesread is -1 if the data transfer is failed or an error occured*/
+        int sent = send(sock, probe.c_str(), probe.length(), 0);
+        {
+            std::lock_guard<std::mutex> lock(printMutex);
+            cout << "  Sent: " << sent << " bytes" << endl;
         }
+        if (sent < 0)
+        {
+            return "";
+        }
+    }
+
+    // Wait for response
+    // FIX: switched from waitForConnection() to waitForData() — we are waiting for
+    // bytes to arrive (readability), not waiting for the connect handshake (writability).
+    if (waitForData(sock, 2))
+    {
+        {
+            std::lock_guard<std::mutex> lock(printMutex);
+            cout << "  Select returned - data ready" << endl;
+        }
+
+        // FIX: removed the switch back to blocking mode. The socket stays non-blocking,
+        // so recv() below can never hang indefinitely — waitForData() already confirmed
+        // (with its own 2 second timeout) that data is present before we get here.
+        char buffer[1024];
+        int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
+
+        {
+            std::lock_guard<std::mutex> lock(printMutex);
+            cout << "  Received: " << bytesRead << " bytes" << endl;
+        }
+
+        if (bytesRead > 0)
+        {
+            buffer[bytesRead] = '\0';
+            {
+                std::lock_guard<std::mutex> lock(printMutex);
+                cout << "  Banner: " << buffer << endl;
+            }
+            return std::string(buffer);
+        }
+    }
+    else
+    {
+        std::lock_guard<std::mutex> lock(printMutex);
+        cout << "  Select timeout (no data)" << endl;
     }
 
     return "";
-    //other than is the bytesread is > 0 it falls here and returns ""
 }
 
 std::string identifyService(int port, std::string banner)
 {
-    // TODO: Parse the banner and return a service identification string
-    // Input: port number and banner string
-    // Output: Human-readable service name
+    // looking for the service in port database included header file
+    auto it = serviceMap.find(port);
 
-    // Examples:
-    // grabBanner returns "SSH-2.0-OpenSSH_7.4"
-    // identifyService(22, "SSH-2.0-OpenSSH_7.4") returns "SSH (OpenSSH 7.4)"
+    // if the port is getting matched with a entry in the servicemap , return the service name
+    if (it != serviceMap.end())
+    {
+        return it->second.name;
+    }
 
-    // grabBanner returns "HTTP/1.1 200 OK\r\nServer: Apache/2.4.41\r\n..."
-    // identifyService(80, "...") returns "HTTP (Apache 2.4.41)"
-
+    // if the banner is empty , we will just return unknown
     if (banner.empty())
     {
         return "Unknown";
     }
 
-    // TODO: Simple parsing logic
-    // If banner starts with "SSH", extract version
-    // If banner starts with "HTTP", extract server name
-    // If banner starts with "220", it's likely SMTP
-    // Etc.
+    // if the port number is not matching with the entries in servicemap , we will check it by hardcoding the patterns
+    if (banner.find("SSH-") != std::string::npos)
+    {
+        return "SSH";
+    }
 
-    // Placeholder:
-    return "Unknown Service";
+    if (banner.find("HTTP/") != std::string::npos)
+    {
+        return "HTTP";
+    }
+
+    if (banner.find("MySQL") != std::string::npos)
+    {
+        return "MySQL";
+    }
+
+    if (banner.find("220") == 0)
+    {
+        return "SMTP/FTP";
+    }
+
+    if (banner.find("PostgreSQL") != std::string::npos)
+    {
+        return "PostgreSQL";
+    }
+
+    if (banner.find("RFB") != std::string::npos)
+    {
+        return "VNC";
+    }
+
+    if (banner.find("REDIS") != std::string::npos)
+    {
+        return "Redis";
+    }
+
+    if (banner.find("Elasticsearch") != std::string::npos)
+    {
+        return "Elasticsearch";
+    }
+
+    if (banner.find("MongoDB") != std::string::npos)
+    {
+        return "MongoDB";
+    }
+
+    // if the service cannot be identified i will return the banner
+    std::string cleanBanner = banner;
+    if (cleanBanner.length() > 100)
+    {
+        cleanBanner = cleanBanner.substr(0, 100) + "...";
+    }
+
+    return "Unknown: " + cleanBanner;
 }
 
 std::string scanSinglePort(std::string ip, int port)
@@ -243,13 +339,10 @@ std::string scanSinglePort(std::string ip, int port)
         {
             // if the control goes to this block then the port is open .Now we can proceed with banner grabbing
             std::string banner = grabBanner(sock, port);
-            //now the deatils about the banner and service is stored in the variable banner 
-            std::string service = identifyService(port, banner);//now we need to identify the service with the banner found 
+            // now the deatils about the banner and service is stored in the variable banner
+            std::string service = identifyService(port, banner); // now we need to identify the service with the banner found
 
             closeSocket(sock);
-
-            // TODO: Return result with service identification
-            // Return format: "OPEN - ServiceName" or "OPEN - Unknown"
             return "OPEN - " + service;
         }
         else
@@ -281,7 +374,13 @@ void workerThread(std::string ip)
         }
 
         std::string status = scanSinglePort(ip, port);
-        cout << "Port " << port << " is " << status << endl;
+
+        {
+            // FIX: wrapped in printMutex so full lines print atomically, no more
+            // "Port Port 1003 is FILTERED" style interleaving
+            std::lock_guard<std::mutex> lock(printMutex);
+            cout << "Port " << port << " is " << status << endl;
+        }
 
         {
             std::lock_guard<std::mutex> lock(resultsMutex);
@@ -333,7 +432,8 @@ int main()
         threads.push_back(std::thread(workerThread, ip));
     }
 
-    // main thread will wait for the worker threads to finish
+    // main thread will wait for the other threads to finish to go into printing the results
+    //w emust ise the 
     for (auto &thread : threads)
     {
         thread.join();
